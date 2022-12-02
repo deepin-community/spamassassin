@@ -1,0 +1,4 @@
+version=2
+
+https://www.apache.org/dist/spamassassin/source/Mail-SpamAssassin-([[:digit:]].*)\.tar\.gz \
+    debian uupdate

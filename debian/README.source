@@ -1,0 +1,35 @@
+## orig tarball generation ##
+
+Upstream does not include rules in SpamAssassin releases.  Rules are
+only provided in the SpamAssassin trunk branch.  We previously used
+dpkg source components, as documented in dpkg-source(1) to re-merge
+the separate upstream components.  More recently, we have switched to
+generating a single unified orig tarball from upstream svn.  The
+primary component of the orig tarball is the content of a svn release
+tag.  In addition to that, the 'rules', 'rulesrc', and 't.rules'
+subdirectories from trunk are included.  The debian/bin/genorig.pl
+script can be useful for generating these tarballs.  This script
+determines the upstream release based on the most recent entry in
+debian/changelog and generates a corresponding orig file.  Note, of
+course, that once a tarball for a given upstream release is in the
+Debian archive, it should not need to be regenerated.
+
+## Working tree management ##
+
+Spamassassin packaging borrows some useful targets in debian/rules from
+the Debian kernel packaging project.  These targets are useful to manage a
+debianized working directory for the entire source package when only the
+debian/ subdirectory is actually tracked in git.  To get started working
+on spamassassin, run:
+
+$ ./debian/rules orig
+
+The .orig.tar.xz and .pkgrules-orig.tar.xz files corresponding to the
+current upstream release should be present in ../orig.  These files will
+be unpacked and overlaid on top of the current working directory.  From
+that directory, changes to upstream files can be developed using quilt.
+
+To remove the upstream content, run:
+
+$ fakeroot ./debian/rules maintainerclean
+

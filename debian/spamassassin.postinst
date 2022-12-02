@@ -1,0 +1,52 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "triggered" ] && [ "$2" = "perl-major-upgrade" ]; then
+    echo "OK, restarting spamd due to trigger"
+    invoke-rc.d spamassassin restart
+fi
+
+if [ "$1" = "configure" ]; then
+    # If a new install, or an upgrade from 3.3.2-2 or earlier...
+    if ! getent passwd debian-spamd > /dev/null ; then
+        adduser --system --group --disabled-login --disabled-password \
+		--home /var/lib/spamassassin --no-create-home \
+		debian-spamd
+    fi
+
+    OWNER=$(stat -c '%U' /var/lib/spamassassin)
+    GROUP=$(stat -c '%G' /var/lib/spamassassin)
+
+    # Lets debian-spamd claim ownership of spamassassin updates on upgrades,
+    # unless the user has overridden.
+    if ! dpkg-statoverride --list /var/lib/spamassassin/* >/dev/null && \
+        [ "$OWNER:$GROUP" != "debian-spamd:debian-spamd" ]; then
+        chown debian-spamd:debian-spamd /var/lib/spamassassin
+        OWNER=debian-spamd
+        GROUP=debian-spamd
+    fi
+
+    test -d /var/lib/spamassassin/sa-update-keys || \
+    install -d -o $OWNER -g $GROUP -m 700 /var/lib/spamassassin/sa-update-keys
+
+    # If gnupg is not available when spamassassin is installed, but
+    # is subsequently made available, you'll need to execute
+    # `dpkg-reconfigure spamassassin` in order to enable sa-update
+    # functionality.
+    if command -v gpg > /dev/null; then
+        env -i LANG="$LANG" PATH="$PATH" http_proxy="$http_proxy" \
+            start-stop-daemon --chuid $OWNER:$GROUP --start \
+            --exec /usr/bin/sa-update -- \
+            --gpghomedir /var/lib/spamassassin/sa-update-keys \
+            --import /usr/share/spamassassin/GPG.KEY
+    fi
+fi
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ] && [ -n "$2" ]; then
+    if deb-systemd-helper was-enabled spamassassin.service > /dev/null 2>&1; then
+	invoke-rc.d spamassassin restart
+    fi
+fi

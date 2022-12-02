@@ -1,0 +1,13 @@
+Index: spamassassin-3.4.2-pre3/spamc/spamc.pod
+===================================================================
+--- spamassassin-3.4.2-pre3.orig/spamc/spamc.pod
++++ spamassassin-3.4.2-pre3/spamc/spamc.pod
+@@ -341,7 +341,7 @@ The exit codes used are as follows:
+ 
+ =head1 SEE ALSO
+ 
+-spamd(1)
++spamd(8)
+ spamassassin(1)
+ Mail::SpamAssassin(3)
+ 

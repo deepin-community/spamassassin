@@ -1,0 +1,3 @@
+# postinst uses s-s-d to invoke sa-update with appropriate environment/uid/gid;
+# it is not a long-lived process
+maintainer-script-should-not-use-start-stop-daemon

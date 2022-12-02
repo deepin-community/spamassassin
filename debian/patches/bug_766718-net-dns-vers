@@ -1,0 +1,30 @@
+Description: Improve Net::DNS package version checks.
+ This isn't strictly necessary right now, but does make version checks more
+ robust and should be forwarded upstream. In multiple places, spamassassin
+ contains tests against $Net::DNS::VERSION that assume the value is numeric. It
+ is not guaranteed to be numeric, and in cases where it isn't the tests trigger
+ warnings.
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=766718
+Forwarded: no
+Index: spamassassin/lib/Mail/SpamAssassin/Dns.pm
+===================================================================
+--- spamassassin.orig/lib/Mail/SpamAssassin/Dns.pm
++++ spamassassin/lib/Mail/SpamAssassin/Dns.pm
+@@ -502,14 +502,15 @@ sub is_dns_available {
+ 
+   # Check version numbers - runtime check only
+   if (defined $Net::DNS::VERSION) {
++    use version 0.77;
+     if (am_running_on_windows()) {
+-      if ($Net::DNS::VERSION < 0.46) {
++      if (version->parse($Net::DNS::VERSION) < version->parse('0.46')) {
+ 	warn("dns: Net::DNS version is $Net::DNS::VERSION, but need 0.46 for Win32");
+ 	return $IS_DNS_AVAILABLE;
+       }
+     }
+     else {
+-      if ($Net::DNS::VERSION < 0.34) {
++      if (version->parse($Net::DNS::VERSION) < version->parse('0.34')) {
+ 	warn("dns: Net::DNS version is $Net::DNS::VERSION, but need 0.34");
+ 	return $IS_DNS_AVAILABLE;
+       }

@@ -1,0 +1,6 @@
+# These will go away as soon as we've cleanly transitioned from ENABLED=1
+init.d-script-should-always-start-service
+duplicate-updaterc.d-calls-in-postinst
+# postinst uses s-s-d to invoke sa-update with appropriate environment/uid/gid;
+# it is not a long-lived process
+maintainer-script-should-not-use-start-stop-daemon

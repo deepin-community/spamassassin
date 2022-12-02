@@ -1,0 +1,218 @@
+#!/usr/bin/make -f
+
+# SpamAssassin debian/rules
+# Duncan Findlay
+
+# Based on sample debian/rules by Joey Hess
+# And patches from various people (see changelog)
+
+#export DH_VERBOSE=1
+
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
+
+# The architecture-dependent portion of this package can be built separately
+# (i.e. without building the rest).
+
+# Bad things could probably happen if we run this in parallel
+.NOTPARALLEL:
+
+ifneq (,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -g
+endif
+ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+	INSTALL_PROGRAM += -s
+endif
+
+SOURCE := $(shell dpkg-parsechangelog -SSource)
+VERSION := $(shell dpkg-parsechangelog -SVersion)
+VERSION_UPSTREAM := $(shell echo "$(VERSION)" | sed -e 's,-[^-]*$$,,')
+
+DIR_ORIG = ../orig/$(SOURCE)-$(VERSION_UPSTREAM)
+TAR_ORIG_NAME = $(SOURCE)_$(VERSION_UPSTREAM).orig.tar.xz
+TAR_ORIG = $(firstword $(wildcard ../$(TAR_ORIG_NAME)) $(wildcard ../orig/$(TAR_ORIG_NAME)))
+
+orig: $(DIR_ORIG)
+	rsync --delete --exclude /debian --exclude .svk --exclude .svn --exclude .git --link-dest=$(DIR_ORIG)/ -a $(DIR_ORIG)/ .
+	QUILT_PATCHES='$(CURDIR)/debian/patches' QUILT_PC=.pc quilt push --quiltrc - -a -q --fuzz=0
+
+$(DIR_ORIG):
+ifeq ($(TAR_ORIG),)
+	$(error Cannot find orig tarball $(TAR_ORIG_NAME))
+else
+	mkdir -p ../orig
+	tar -C ../orig -xaf $(TAR_ORIG)
+endif
+
+# For building both spamc and spamassassin
+configure: configure-stamp
+configure-stamp:
+
+	dh_testdir
+
+	perl Makefile.PL INSTALLDIRS=vendor \
+	 DESTDIR=$(CURDIR)/debian/spamassassin \
+	 CONFDIR=/etc/spamassassin LDFLAGS="$(LDFLAGS)" \
+	 ENABLE_SSL=yes < /dev/null
+
+	touch configure-stamp
+
+build: build-indep build-arch
+
+install: install-indep install-arch
+
+binary: binary-indep binary-arch
+
+clean: clean1
+clean1:
+	dh_testdir
+	dh_testroot
+	rm -f build-indep-stamp build-arch-stamp configure-stamp
+
+	[ ! -f Makefile ] || $(MAKE) veryclean
+
+	rm -f spamd/spamc.1p sa-awl.1p sa-check_spamd.1p \
+		rules/70_sandbox.cf rules/72_active.cf
+	rm -Rf t/log/*
+	rm -f debian/semantic.cache
+
+	dh_clean
+
+maintainerclean:
+	dh_testdir
+	rm -f build-indep-stamp build-arch-stamp configure-stamp
+	rm -rf $(filter-out debian .svk .svn .git, $(wildcard * .[^.]*))
+
+#debian/po/templates.pot: debian/spamassassin.templates
+#	-debconf-updatepo
+
+# Spamassassin ONLY
+
+build-indep: build-indep-stamp
+#build-indep-stamp: configure debian/po/templates.pot
+build-indep-stamp: configure-stamp
+
+	dh_testdir
+
+	$(MAKE) CFLAGS="$(CPPFLAGS) $(CFLAGS)" CFCCFLAGS="" CFLIBS=""
+
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	$(MAKE) test
+endif
+
+
+	pod2man sa-awl.raw sa-awl.1p
+	pod2man sa-check_spamd.raw sa-check_spamd.1p
+	touch build-indep-stamp
+
+install-indep: install-spamassassin
+
+# SpamAssassin
+
+install-spamassassin: build-indep
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs -i
+
+	$(MAKE) install DESTDIR=`pwd`/debian/spamassassin
+
+
+#	Get rid of SPAMC stuff.
+	rm debian/spamassassin/usr/bin/spamc debian/spamassassin/usr/share/man/man1/spamc.1p
+#	...and sa-compile
+	rm debian/spamassassin/usr/bin/sa-compile debian/spamassassin/usr/share/man/man1/sa-compile.1p
+
+	dh_install -psa-compile sa-compile /usr/bin
+	install -o root -g root -m664 debian/sa-compile.pre debian/sa-compile/etc/spamassassin
+	dh_installman -psa-compile
+
+#	Move spamd to /usr/sbin + fix the man file
+	sed 's#SPAMD 1#SPAMD 8#' \
+	 debian/spamassassin/usr/share/man/man1/spamd.1p \
+	 > debian/spamassassin/usr/share/man/man8/spamd.8p
+	rm debian/spamassassin/usr/share/man/man1/spamd.1p
+
+	mv debian/spamassassin/usr/bin/spamd debian/spamassassin/usr/sbin/
+
+#	Install Debian specific files
+	install -o root -g root -m644 debian/65_debian.cf \
+		debian/spamassassin/etc/spamassassin/65_debian.cf
+
+	install -o root -g root -m644 debian/GPG.KEY \
+		debian/spamassassin/usr/share/spamassassin/GPG.KEY
+
+	-rmdir -p debian/spamassassin/usr/lib/perl5
+
+	install -o root -g root -m644 ldap/README \
+		debian/spamassassin/usr/share/doc/spamassassin/README.ldap
+	install -o root -g root -m644 spamd/README \
+		debian/spamassassin/usr/share/doc/spamassassin/README.spamd
+	install -o root -g root -m644 rules/* debian/spamassassin/usr/share/spamassassin
+	rm debian/spamassassin/usr/share/spamassassin/70_sandbox.cf \
+		debian/spamassassin/usr/share/spamassassin/sandbox-*.pm \
+		debian/spamassassin/usr/share/spamassassin/*.pre
+
+binary-indep: build-indep install-indep
+	dh_testdir -i
+	dh_testroot -i
+	dh_installman -i sa-awl.1p sa-check_spamd.1p
+	dh_installdocs -i
+	dh_installexamples -i
+	dh_installsystemd -i --no-enable
+	dh_installinit -i --no-enable --no-start
+	dh_installsystemd -i --no-start
+	dh_installcron -i
+	dh_installchangelogs Changes -i
+	dh_lintian
+	dh_link -i
+	dh_compress -i -XGPG.KEY
+	dh_fixperms -i
+	dh_installdeb -i
+	dh_perl -i
+	dh_gencontrol -i
+	dh_md5sums -i
+	dh_builddeb -i
+
+# spamc ONLY
+
+build-arch: build-arch-stamp
+#build-arch-stamp: configure debian/po/templates.pot
+build-arch-stamp: configure-stamp
+
+	dh_testdir
+
+	-mkdir -p blib/man1
+
+	$(MAKE) CFCCFLAGS="" CFLAGS="$(CPPFLAGS) $(CFLAGS)" \
+	  CFLIBS="" spamc/spamc
+
+	pod2man spamc/spamc.pod blib/man1/spamc.1p
+
+	touch build-arch-stamp
+
+install-arch: DH_OPTIONS=
+install-arch: build-arch-stamp
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs -a
+
+	install -o root -g root -m755 spamc/spamc debian/spamc/usr/bin/spamc
+
+binary-arch: build-arch-stamp install-arch
+	dh_testdir -a
+	dh_testroot -a
+	dh_installdocs -a
+	dh_installman -a
+	dh_installchangelogs Changes -a
+	dh_strip -a
+	dh_compress -a
+	dh_fixperms -a
+	dh_installdeb -a
+	dh_shlibdeps -a
+	dh_gencontrol -a
+	dh_md5sums -a
+	dh_builddeb -a
+
+.PHONY: build build-indep build-arch clean clean1 binary-indep binary-arch binary install configure install-indep install-indep-docs install-arch

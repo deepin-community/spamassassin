@@ -1,0 +1,15 @@
+#!/bin/bash
+#----------------------------
+# Testing spamassassin daemon
+#----------------------------
+set -e
+
+/etc/init.d/spamassassin restart >/dev/null 2>&1
+
+if pgrep spamd > /dev/null; then
+    echo "OK"
+    exit 0
+else
+    echo "ERROR: SPAMD IS NOT RUNNING"
+    exit 1
+fi
